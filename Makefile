@@ -2,6 +2,9 @@
 FLOPPY=bin/test.adf
 FILES=data/sugtest.raw data/sugtest.pal
 
+ASMFLAGS=-Fvobj -m68000 -I${AMIGA_NDK}/include/include_i
+
+
 all: bin out $(FLOPPY)
 
 bin:
@@ -20,10 +23,10 @@ out/bb.out: out/bootblock.o
 	vlink -brawbin1 $< -o $@
 
 out/bootblock.o: bootblock.asm
-	vc -c $< -o $@
+	vasmm68k_mot $(ASMFLAGS) $< -o $@
 
 out/main.o: main.asm
-	vc -c $< -o $@
+	vasmm68k_mot $(ASMFLAGS) $< -o $@
 
 out/main.raw: out/main.o
 	vlink -brawbin1 $< -o $@
