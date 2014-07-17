@@ -302,7 +302,7 @@ begin_read:
 		rts
 
 wait_read:	move.w	DmaDone(a0),d0
-		beq.s	delay
+		beq.w	delay
 
 		;move.w	#0,dsklen(a5)
 		;move.w	#DMAF_DISK,dmacon(a5)
