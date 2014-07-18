@@ -532,6 +532,10 @@ begin_load:	movem.l	a2/d2,-(sp)
 		tst.l	TargetPtr(a2)
 		bne	error
 
+		move.l	#$0000ffff,d2
+		and.l	d2,d0
+		and.l	d2,d1
+
 		move.w	d0,d2
 
 		divu.w	#11,d0
