@@ -1,0 +1,14 @@
+# FS-UAE configuration saved by FS-UAE Launcher
+# Last saved: 2018-08-28 22:15:10
+
+[fs-uae]
+amiga_model = A500/512K
+chip_memory = 1536
+base_dir = FS-UAE
+console_debugger = 1
+floppy_drive_0 = bin/test.adf
+serial_port = tcp://127.0.0.1:1234
+kickstart_file = kick13.rom
+cpu = 68000
+slow_memory = 0
+automatic-input-grab = 0

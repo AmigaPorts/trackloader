@@ -5,32 +5,19 @@ _LVO\1		EQU lvocnt
 lvocnt		SET lvocnt-LIB_VECTSIZE
 		ENDM
 
-		include exec/execbase.i
-
 		include hardware/adkbits.i
 		include hardware/cia.i
 		include hardware/custom.i
 		include hardware/dmabits.i
 		include hardware/intbits.i
 
-		include lvo/exec_lib.i
-
-		include main.i
+		include bootconfig.i
 
 MOTOR_FRAMES	equ	50	; #frames to keep motor running after load is done
-BOOTBLOCKSZ	equ	1024	
-CUSTOM		equ	$dff000
+BOOTBLOCKSZ		equ	1024	
+CUSTOM			equ	$dff000
 
-MEMF_CHIP   	equ	(1<<1)	; Chip memory
-MEMF_FAST	equ	(1<<2)	; Fast memory
-MEMF_LOCAL  	equ	(1<<8)	; Memory that does not go away at RESET
-MEMF_24BITDMA	equ	(1<<9)	; DMAable memory within 24 bits of address
-MEMF_KICK	equ	(1<<10)	; Memory that can be used for KickTags
-MEMF_CLEAR	equ	(1<<16)	; AllocMem: NULL out area before return
-MEMF_LARGEST	equ	(1<<17)	; AvailMem: return the largest chunk size
-MEMF_REVERSE	equ	(1<<18)	; AllocMem: allocate from the top down
-MEMF_TOTAL	equ	(1<<19)	; AvailMem: return total size of memory
-MEMF_NO_EXPUNGE	equ	(1<<31)	; AllocMem: Do not cause expunge on failure
+		
 
 		rsreset
 
@@ -38,25 +25,14 @@ _start:
 		dc.b	'D','O','S',0		; disk type
 		dc.l	0			; checksum
 		dc.l	880			; root block
-
+		
 _entrypoint:
 		; Because this is a bootblock, we will have ExecBase in a6 here
 
+		lea.l	dskdata(pc),a5
+		lea.l	trackbuf(pc),a5
+		
 		lea.l	CUSTOM,a5
-
-		move.l	#(MEMF_LARGEST|MEMF_FAST|MEMF_CLEAR),d1
-		lea.l	fastblock(pc),a4
-		jsr	grab_mem(pc)
-
-		move.l	#(MEMF_LARGEST|MEMF_CHIP|MEMF_CLEAR),d1
-		lea.l	chipblock(pc),a4
-		jsr	grab_mem(pc)
-
-		; move stack to fastmem
-		move.l	#4096,d0
-		jsr	alloc_fast
-		add.l	#4096,a0
-		move.l	a0,a7
 
 		; Enter supervisor mode with user stack.
 		;jsr	_LVOSuperState(a6)
@@ -65,29 +41,17 @@ initdsk:	move.w	#$4489,dsksync(a5)	; use stock MFM sync word
 		move.w	#$7f00,adkcon(a5)	; clear all disk bits
 		move.w	#ADKF_SETCLR|ADKF_MFMPREC|ADKF_FAST|ADKF_WORDSYNC,adkcon(a5)
 
-		move.l	#DISKDATASZ,d0
-		bsr	alloc_fast
-		lea.l	dskdata(pc),a1
-		move.l	a0,(a1)
-
 		; assume we are at track 0
 		btst	#CIAB_DSKTRACK0,(a4)
 		bne	error
-
-		move.l	#6400*2,d0		; we will load 6400 words at a time (12800 bytes)
-		jsr	alloc_chip
-		lea.l	trackbuf(pc),a1
-		move.l	a0,(a1)
 
 		; Disable all interrupts and requests
 		move.w	#$7FFF,intena(a5)
 		move.w	#$7FFF,intreq(a5)
 
-		if 0
+		if 1
 		; Copy remainder of bootblock to fast continue to execute there
-		move.l	#_end-faststart,d0
-		move.l	#_end-faststart,d0
-		jsr	alloc_fast
+		move.l	config_loaderAdr(pc),a0
 		move.l	a0,a2
 		lea.l	faststart(pc),a1
 		lsr.w	#2,d0
@@ -96,18 +60,20 @@ initdsk:	move.w	#$4489,dsksync(a5)	; use stock MFM sync word
 		dbra	d0,.copy
 
 		; TODO need _LVOClearCache(a6)...
-	
+
+		add #faststart_entry-faststart,a2
 		jmp	(a2)
 		endif
 
 		; ** Resume point in fastmem **
 faststart:
-		; allocate a bunch of space for the first part.. fixme
-		move.l	#128*1024,d0
-		jsr	alloc_fast
-		lea.l	fastbuf(pc),a1
-		move.l	a0,(a1)
 
+boot_LoadFunc:		dc.l 0
+config_loaderAdr:	dc.l LOADERADR
+config_appAdr:		dc.l APP_ADDR
+config_appSectors:	dc.w APP_SECTORS
+
+faststart_entry
 		; Install interrupt handler
 		moveq.l	#0,d0
 		;move.w	AttnFlags(a6),d1
@@ -133,40 +99,29 @@ faststart:
 		; Enable master DMA bit and disk DMA
 		move.w  #(DMAF_SETCLR|DMAF_MASTER|DMAF_DISK),dmacon(a5)
 
-		move.l	fastbuf(pc),a0
+		move.l	config_appAdr(pc),a0
 		sub.l	a1,a1
-		moveq	#2,d0
-		move.w	#2,d1
-		jsr	begin_load
+		moveq	#APP_FIRSTSECTOR,d0
+		move.w	config_appSectors(pc),d1
+		bsr	begin_load
 
-		move.l	dskdata(pc),a1
+		lea.l	dskdata(pc),a1
 .wait_boot:	tst.l	TargetPtr(a1)
 		bne.s	.wait_boot
 
 		move.l	a0,a2
 
-		move.l	#boot_SIZE,d0
-		jsr	alloc_fast
-
 		lea.l	begin_load(pc),a1
-		move.l	a1,boot_LoadFunc(a0)
-		lea.l	alloc_chip(pc),a1
-		move.l	a1,boot_AllocChip(a0)
-		lea.l	alloc_fast(pc),a1
-		move.l	a1,boot_AllocFast(a0)
-
+		lea.l	boot_LoadFunc(pc),a3
+		move.l	a1,(a3)
+		
+		
 		move.w	#$000,$dff180
 		jmp	(a2)
 error:
 		move.l	#$f0f,$dff180
 		bra.s	error
 		illegal
-
-grab_mem:	jsr	_LVOAvailMem(a6)
-		move.l	d0,(a4)
-		jsr	_LVOAllocMem(a6)
-		move.l	d0,4(a4)
-		rts
 
 
 CIAF_DSKSELx	EQU	CIAF_DSKSEL0|CIAF_DSKSEL1|CIAF_DSKSEL2|CIAF_DSKSEL3
@@ -181,26 +136,7 @@ DSKSTATE_WAITREAD	EQU	6
 DSKDIREC_TOCENTER	EQU	0
 DSKDIREC_TOEDGE		EQU	1
 
-		rsreset
-DskWait		rs.w	1		; frames to wait before entering state machine again
-CurState	rs.w	1		; index into into state code offset table
-DmaDone		rs.w	1		; written=1 from disk interrupt handler, cleared before DMA
-MotorTimeout	rs.w	1		; frames left to wait before turning off drive motor
-TargetPtr	rs.l	1		; target data ptr, bumped after each track
-CompletionPtr	rs.l	1		; ptr to word to write=1 when entire load is done for polling
-		align	2
-CurTrack	rs.b	1		; must start at even
-CurSector	rs.b	1
-		align	2
-StartTrack	rs.b	1		; 0 - 79, must start at even
-StartSector	rs.b	1		; 0 - 10
-		align	2
-EndTrack	rs.b	1		; 0 - 80, must start at even
-EndSector	rs.b	1		; 0 - 10
-TargTrack	rs.b	1
 		align	4
-
-DISKDATASZ	EQU	__RS
 
 	; common setup for these state machine handlers:
 	; a0 = dskdata
@@ -294,7 +230,9 @@ begin_read:
 
 .head_ok:	clr.w	DmaDone(a0)
 		move.w	#INTF_DSKBLK,intreq(a5)		; clear disk int request in case there is a pending req
-		move.l	trackbuf,dskpt(a5)		; set destination buffer
+		pea	trackbuf(pc)
+		move.l	(sp)+,d0
+		move.l	d0,dskpt(a5)			; set destination buffer
 		move.w	#$8000+6400,d0			; load 6400 words, enable DMA bit in DMACON
 		move.w	d0,dsklen(a5)
 		move.w	d0,dsklen(a5)			; write dsklen twice to kick DMA
@@ -307,8 +245,8 @@ wait_read:	move.w	DmaDone(a0),d0
 		;move.w	#0,dsklen(a5)
 		;move.w	#DMAF_DISK,dmacon(a5)
 
-		move.l	trackbuf(pc),a1
-		jsr	mfm_decode
+		lea.l	trackbuf(pc),a1
+		bsr	mfm_decode
 
 		; done with this track
 		add.b	#1,TargTrack(a0)
@@ -337,7 +275,6 @@ dskst_offset:
 		dc.w	sync_track-dskhandlers
 		dc.w	wait_read-dskhandlers
 
-dskdata:	dc.l	0
 
 dskblk_handler:
 		movem.l	d0-d7/a0-a6,-(sp)
@@ -348,7 +285,7 @@ dskblk_handler:
 		move.w	#INTF_DSKBLK,d0
 		move.w	d0,intreq(a5)
 
-		move.l	dskdata(pc),a0
+		lea.l	dskdata(pc),a0
 		move.w	#1,DmaDone(a0)
 .nope:
 		movem.l	(sp)+,d0-d7/a0-a6
@@ -357,7 +294,7 @@ dskblk_handler:
 vblank_handler:
 		movem.l	d0-d7/a0-a6,-(sp)
 
-		move.l	dskdata(pc),a0
+		lea.l	dskdata(pc),a0
 		lea.l	$bfe001,a3		; CIA-A port A
 		lea.l	$bfd100,a4		; CIA-B port B
 		lea.l	CUSTOM,a5
@@ -388,18 +325,6 @@ vblank_handler:
 .leave:		movem.l	(sp)+,d0-d7/a0-a6
 		rte
 
-alloc_fast:
-		lea.l	fastblock(pc),a1
-		bra.s	_doalloc
-alloc_chip:
-		lea.l	chipblock(pc),a1
-
-_doalloc:	addq.l	#3,d0
-		and.b	#$fc,d0
-		sub.l	d0,(a1)
-		move.l	4(a1),a0
-		add.l	d0,4(a1)
-		rts
 
 ; a0: dskdata structure
 ; a1: just loaded track buffer
@@ -528,7 +453,7 @@ mfm_decode:
 
 begin_load:	movem.l	a2/d2,-(sp)
 
-		move.l	dskdata(pc),a2
+		lea.l	dskdata(pc),a2
 		tst.l	TargetPtr(a2)
 		bne	error
 
@@ -554,19 +479,40 @@ begin_load:	movem.l	a2/d2,-(sp)
 		move.l	a0,TargetPtr(a2)
 		movem.l	(sp)+,a2/d2
 		rts
-	
-chipblock:	dc.l	0,0
-fastblock:	dc.l	0,0
-
-trackbuf:	dc.l	0
-fastbuf:	dc.l	0
 
 _end:
 
 CODESIZE	equ	_end-_start
 
-		if CODESIZE>BOOTBLOCKSZ
-		fail Bootblock is too big!
-		endif
+	if CODESIZE>BOOTBLOCKSZ
+	fail Bootblock is too big!
+	endif
+		
+	align	4
+	
+	rsreset
+	
+dskdata equ *
+	
+DskWait		rs.w	1		; frames to wait before entering state machine again
+CurState	rs.w	1		; index into into state code offset table
+DmaDone		rs.w	1		; written=1 from disk interrupt handler, cleared before DMA
+MotorTimeout	rs.w	1		; frames left to wait before turning off drive motor
+TargetPtr	rs.l	1		; target data ptr, bumped after each track
+CompletionPtr	rs.l	1		; ptr to word to write=1 when entire load is done for polling
+		align	2
+CurTrack	rs.b	1		; must start at even
+CurSector	rs.b	1
+		align	2
+StartTrack	rs.b	1		; 0 - 79, must start at even
+StartSector	rs.b	1		; 0 - 10
+		align	2
+EndTrack	rs.b	1		; 0 - 80, must start at even
+EndSector	rs.b	1		; 0 - 10
+TargTrack	rs.b	1
+
+
+trackbuf equ dskdata+32
+
 ;_padding:
 	;dcb.b BOOTBLOCKSZ-CODESIZE, 0

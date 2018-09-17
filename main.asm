@@ -4,7 +4,7 @@
 ;
 ; loaded into fastmem & called from bootblock
 
-		include main.i
+		include bootconfig.i
 		include hardware/custom.i
 		include hardware/dmabits.i
 		include hardware/intbits.i
@@ -34,31 +34,30 @@ PALSIZE		EQU	512
 
 IMGSECTORS	EQU	(IMGSIZE+PALSIZE)/512
 
+BITMAP		EQU $2000
+COPLIST		EQU $1000
+
 start:		lea.l	start(pc),a4
 		move.l	a0,env-start(a4)
 		move.l	a0,a3
-
+		
 		lea.l	CUSTOM,a5
 
-		move.l	#IMGSIZE+PALSIZE,d0
-		move.l	boot_AllocChip(a3),a2
-		jsr	(a2)
+		lea.l BITMAP,a0
 		move.l	a0,bitmap-start(a4)
-
+		
 		lea.l	sync(pc),a1
 		move.w	#3,d0
 		move.w	#IMGSECTORS,d1
-		move.l	boot_LoadFunc(a3),a2
+		move.l	(LOADERADR),a2
 		jsr	(a2)
 
 .wait:		tst.w	(a1)
 		beq.s	.wait
-	
-		move.l	#1024,d0
-		move.l	boot_AllocChip(a3),a2
-		jsr	(a2)
-		move.l	a0,coplist-start(a4)
 
+		lea.l	COPLIST,a0
+		move.l	a0,coplist-start(a4)
+		
 		move.w	#bplcon0,(a0)+	; 2
 		move.w	#BCON0F_COLOR|BCON0F_BPU0|BCON0F_BPU2,(a0)+	; 2
 		move.w	#ddfstrt,(a0)+

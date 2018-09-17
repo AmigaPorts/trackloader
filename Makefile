@@ -1,8 +1,9 @@
 
 FLOPPY=bin/test.adf
-FILES=data/sugtest.raw data/sugtest.pal
-
-ASMFLAGS=-Fvobj -m68000 -I${AMIGA_NDK}/include/include_i
+VASM=/opt/m68k-amigaos6/bin/vasm
+VLINK=/opt/m68k-amigaos6/bin/vlink
+FILES=out/main.raw data/sugtest.raw data/sugtest.pal
+ASMFLAGS=-Fvobj -m68000 -L $@.lst
 
 
 all: bin out $(FLOPPY)
@@ -13,23 +14,23 @@ bin:
 out:
 	mkdir out
 
-$(FLOPPY): out/bb.sum out/main.raw $(FILES)
-	python make-adf.py $@ out/bb.sum out/main.raw $(FILES)
+$(FLOPPY): out/bb.sum $(FILES)
+	python make-adf.py $@ out/bb.sum $(FILES)
 
 out/bb.sum: out/bb.out
 	python sum-bootblock.py $< $@
 
 out/bb.out: out/bootblock.o
-	vlink -brawbin1 $< -o $@
+	$(VLINK) -brawbin1 $< -o $@
 
 out/bootblock.o: bootblock.asm
-	vasmm68k_mot $(ASMFLAGS) $< -o $@
+	$(VASM) $(ASMFLAGS) $< -o $@
 
 out/main.o: main.asm
-	vasmm68k_mot $(ASMFLAGS) $< -o $@
+	$(VASM) $(ASMFLAGS) $< -o $@
 
 out/main.raw: out/main.o
-	vlink -brawbin1 $< -o $@
+	$(VLINK) -brawbin1 $< -o $@
 
 clean:
 	rm -rf out bin

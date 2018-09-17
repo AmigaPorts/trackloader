@@ -9,18 +9,22 @@ def splice_checksum(block, chksum):
 def makeit(fn, ofn):
 	with open(fn, 'rb') as f: data = f.read()
 
+	# Pad to 1024
 	data = data + '\0' * (1024 - len(data))
-	
+
+	#Calculate Checksum
 	chksum = 0
 	for w in xrange(0, 1024, 4):
 		chksum += struct.unpack('>I', data[w:w+4])[0]
 		if chksum > 0xffffffff:
 			chksum = (chksum + 1) & 0xffffffff
 
+	#Invert Checksum
 	chksum = (~chksum) & 0xffffffff
-	
+
+	#Insert checksum into original data
 	data2 = splice_checksum(data, chksum)
-	
+
 	with open(ofn, 'wb') as f: f.write(data2)
 
 if len(sys.argv) == 3:
