@@ -52,6 +52,7 @@ initdsk:	move.w	#$4489,dsksync(a5)	; use stock MFM sync word
 		if 1
 		; Copy remainder of bootblock to fast continue to execute there
 		move.l	config_loaderAdr(pc),a0
+		move.l	#_end-faststart,d0
 		move.l	a0,a2
 		lea.l	faststart(pc),a1
 		lsr.w	#2,d0
